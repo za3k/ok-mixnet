@@ -1,0 +1,3 @@
+id  ip/dns              name
+0   157.131.95.172      za3k.home
+1   71.19.156.60        za3k.deadtree

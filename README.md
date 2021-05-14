@@ -26,6 +26,6 @@ The file is be short and looks like this:
 4. Xor the bin files together, and delete the originals. The final file should be called `<their-ID>.pad`.
 
 ```
-xor YOUR_ID.half-pad THEIR_ID.half-pad YOUR_ID.half-pad >THEIR_ID.pad && shred -zu YOUR_ID.half-pad THEIR_ID.half-pad
+xor --same-size YOUR_ID.half-pad THEIR_ID.half-pad >THEIR_ID.pad && shred -zu YOUR_ID.half-pad THEIR_ID.half-pad
 ```
-5. Put both files in the 'pads' directory of ok-mixnet.
+5. Put the `.pad` and `.txt` files in the 'pads' directory of ok-mixnet.

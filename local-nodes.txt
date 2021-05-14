@@ -1,0 +1,3 @@
+id  ip/dns              name
+0   192.168.1.157       laptop
+1   192.168.1.17        germinate
