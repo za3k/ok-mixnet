@@ -8,9 +8,9 @@ To use it, you will need:
 - To be on the list! Email me (my email is [here](za3k.com)) to join the network. 
 - A friend you want to talk to who is also on the mixnet.
 
-To send a message to a friend, put a file with the message in the directory `messages-to-send/<friend_name>`, which will be automatically created. Messages to you will appear in `messages-received`.
+To send a message to a friend, put a file with the message in the directory `messages-to-send/<friend_name>` (the directory is automatically created for you after setting up a connection). Messages to you will appear in `messages-received`.
 
-To set up a connection with a friend:
+To set up a connection with a friend, so you can send each other messages:
 1. Both of you should generate 40GB of fresh random numbers. Put them in a file called `<your-ID>.half-pad`.
 ```
 dd if=/dev/urandom of=YOUR_ID.half-pad bs=1M count=40000
@@ -32,3 +32,4 @@ The file is be short and looks like this:
 xor --same-size YOUR_ID.half-pad THEIR_ID.half-pad >THEIR_ID.pad && shred -zu YOUR_ID.half-pad THEIR_ID.half-pad
 ```
 5. Put the `.pad` and `.txt` files in the 'pads' directory of ok-mixnet.
+6. Restart `mixer.py`.
