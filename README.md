@@ -20,7 +20,7 @@ dd if=/dev/urandom of=YOUR_ID.half-pad bs=1M count=40000
 date -u "+%Y-%m-%d" >THEIR_ID.start-date.txt
 ```
 
-The file is be short and looks like this:
+The file is short and looks like this:
 ```
 2021-05-13
 ```
