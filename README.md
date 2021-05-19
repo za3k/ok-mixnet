@@ -1,9 +1,10 @@
 See [Theory](https://za3k.com/ok-mixnet.md) over on my site for the explanation of how the mixnet works.
 
 To use it, you will need:
-- A computer which is on and connected to the internet 24/7
+- A computer which is on and connected to the internet 24/7. 
 - Linux. If you're not running Linux you can probably modify the python code without too much work. Only the random-number source is Linux-specific.
 - A good source of random numbers, such as a hardware random number generator. **This is an alpha proof of concept that uses /dev/urandom by default, which is not a good source.** To change the source of random numbers, modify the source code from '/dev/urandom' to whatever source device you wish.
+- Your computer needs to have a publicly available IP address (you may need to set up port forwarding for TCP port 17928). You need to be support IPv4. OK-Mixnet is IPv4 only, sorry.
 - To be on the list! Email me (my email is [here](za3k.com)) to join the network. 
 - A friend you want to talk to who is also on the mixnet.
 

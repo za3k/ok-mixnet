@@ -21,7 +21,7 @@ class Mixnet():
         self.send_queue = queue.Queue()    # (integer node id, envelope_bytes)
         self.received_queue = queue.Queue() # (float time in seconds, envelope_bytes)
         self.PERIOD = 1 # Some main loop assumptions rely on this being 1, don't adjust
-        self.PORT = 8888
+        self.PORT = 17928
         self.ALLOWABLE_DRIFT = 300 # sender and receiver clock are allowed to disagree by 5 minutes
         self.FILE_CHECK_PERIOD = 10 # How often to check for new outgoing files
         self.p = 2**9689 - 1
