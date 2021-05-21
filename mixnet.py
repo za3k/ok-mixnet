@@ -2,9 +2,9 @@ import time, queue, os, struct, collections, threading, socket, sys, math, datet
 
 MESSAGE_LENGTH = 1211
 ENCRYPTED_METHOD_LENGTH = 1211 + 1212
-ENVELOPE_LENGTH = 2439
+ENVELOPE_LENGTH = 2435
 PAD_LENGTH = 3635 # bytes, 1211+1212+1212
-
+logging.basicConfig(level=logging.DEBUG)
 
 class InvalidMac(Exception):
     pass
@@ -14,9 +14,20 @@ def xor(bytes1, bytes2):
 
 class Mixnet():
     def __init__(self):
+        dirs = ["messages-to-send", "messages-sent", "messages-received", "pads"]
+        for d in dirs:
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
+
+        self.ips = {} # id -> ip
+        self.names = {} # id -> human-readable name
+        self.ids = {} # human-readable name -> id
+        self.message_queue = {} # node_id -> [ message_bytes ]
         self.load_nodes()
+
         self.load_me()
-        #self.message_queue = {} # node_id -> [ message_bytes ]
         self.scheduled_envelopes = collections.defaultdict(list) # time in seconds -> [ (integer node id, envelope_bytes) ]
         self.send_queue = queue.Queue()    # (integer node id, envelope_bytes)
         self.received_queue = queue.Queue() # (float time in seconds, envelope_bytes)
@@ -26,19 +37,9 @@ class Mixnet():
         self.FILE_CHECK_PERIOD = 10 # How often to check for new outgoing files
         self.p = 2**9689 - 1
         self.DATE_FORMAT = "%Y-%m-%d-%H:%M:%SZ"
+        self.MINIMUM_TIME = 600 # 10 minutes
 
         self.rejected_messages = set()
-        dirs = ["messages-to-send", "messages-sent", "messages-received", "pads"]
-        for id_, name in self.names.items():
-            if self.pad_present(id_):
-                dirs.append("messages-to-send/{name}".format(name=name))
-                dirs.append("messages-sent/{name}".format(name=name))
-                #dirs.append("messages-received/{name}".format(name=name))
-        for d in dirs:
-            try:
-                os.mkdir(d)
-            except FileExistsError:
-                pass
 
     def pad_present(self, node):
         """
@@ -73,9 +74,9 @@ class Mixnet():
         except IOError:
             logging.error("Pad {node} does not have a valid start date file.")
             return None
-        pad_number = math.ceil((ctime - start_date.timestamp()) / self.PERIOD / self.N)
+        pad_number = math.ceil((ctime - start_date.timestamp()) / self.PERIOD / self.MINIMUM_TIME)
         pad_number = pad_number*2 + (as_sender ^ (self.me < node)) # Every other pad is A -> B vs B -> A
-        logging.debug(" Loading pad", ctime, pad_path, pad_number)
+        logging.debug(" Loading pad {}, {}, {}".format(ctime, pad_path, pad_number))
         with open(pad_path, ("r+b" if as_sender else "rb")) as f:
             f.seek(PAD_LENGTH*pad_number, 0)
             pad = f.read(PAD_LENGTH)
@@ -108,13 +109,14 @@ class Mixnet():
                     sys.exit(1)
         self.me = me
 
-    def load_nodes(self, file="nodes.txt"):
+    def load_nodes(self, file=None):
+        if os.path.exists("local-nodes.txt"):
+            file = "local-nodes.txt"
+        else:
+            file = "nodes.txt"
         assert os.path.exists(file)
         nodes = []
-        self.ips = {}
-        self.names = {}
-        self.ids = {}
-        self.message_queue = {}
+        new_names = {}
         with open(file, "r") as f:
             for line in f:
                 node, ip, name  = line.split()
@@ -122,17 +124,29 @@ class Mixnet():
                     continue
                 node = int(node)
                 nodes.append(node)
-                self.ips[node] = ip
-                self.names[node] = name
-                self.ids[name] = node
-                self.message_queue[node] = queue.Queue()
-        self.N = len(nodes)
-        assert set(nodes) == set(range(self.N))
+                if node not in self.names:
+                    self.ips[node] = ip
+                    new_names[node] = name
+                    self.names[node] = name
+                    self.ids[name] = node
+                    self.message_queue[node] = queue.Queue()
+        assert set(nodes) == set(range(len(nodes)))
+
+        dirs = ["messages-to-send", "messages-sent", "messages-received"]
+        for id_, name in self.names.items():
+            if self.pad_present(id_):
+                dirs.append("messages-to-send/{name}".format(name=name))
+                dirs.append("messages-sent/{name}".format(name=name))
+        for d in dirs:
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
 
     def generate_random(self, num_bytes):
         return os.urandom(num_bytes)
     def generate_message_id(self):
-        return os.urandom(4)
+        return self.generate_random(4)
 
     def pad_parts(self, pad_bytes):
         assert len(pad_bytes) == (1211+1212+1212)
@@ -176,7 +190,7 @@ class Mixnet():
         expected_mac_bytes = expected_mac.to_bytes(1212, byteorder='big')
 
         if mac_bytes != expected_mac_bytes:
-            logging.debug(mac_bytes[:10], expected_mac_bytes[:10], plaintext_bytes[:10])
+            logging.debug("{} {} {}".format(mac_bytes[:10], expected_mac_bytes[:10], plaintext_bytes[:10]))
             raise InvalidMac()
         if check:
             assert self.encrypt(pad_bytes, plaintext_bytes, check=False) == ciphertext_bytes + mac_bytes
@@ -185,19 +199,22 @@ class Mixnet():
         return plaintext_bytes
 
     def make_friend_data_envelope(self, ctime, node, pad, message_bytes):
-        return struct.pack("!LLLL", self.me, node, self.N, ctime) + self.encrypt(pad, message_bytes)
+        return struct.pack("!LLL", self.me, node, ctime) + self.encrypt(pad, message_bytes)
 
     def make_friend_chaff_envelope(self, ctime, node, pad):
         return self.make_friend_data_envelope(ctime, node, pad, b'C' + b"\0"*1210)
 
     def make_stranger_chaff_envelope(self, ctime, node):
-        return struct.pack("!LLLL", self.me, node, self.N, ctime) + self.generate_random(1211+1212)
+        return struct.pack("!LLL", self.me, node, ctime) + self.generate_random(1211+1212)
 
     def do_work(self, ctime):
-        node = (ctime + self.me) % self.N
-        logging.debug(" Doing work for node ", node)
+        node = (ctime + self.me) % max(len(self.ids), self.MINIMUM_TIME)
+        logging.debug(" Doing work for node {}".format(node))
         if node == self.me:
             logging.debug(" Skipping self")
+            return
+        if node not in self.names: # actually a list of ids, because it's the keys
+            logging.debug(" Skipping blank slot... small N")
             return
         pad = self.fetch_pad(node, ctime, as_sender=True)
         if pad is None:
@@ -276,12 +293,9 @@ class Mixnet():
         self.received_queue.put((time.time(), envelope))
         logging.debug("Received some raw bytes")
     def process_raw_envelope(self, ctime, envelope_bytes):
-        sender, receiver, N, claimed_time, message_bytes = *struct.unpack("!LLLL", envelope_bytes[:16]), envelope_bytes[16:]
+        sender, receiver, claimed_time, message_bytes = *struct.unpack("!LLL", envelope_bytes[:12]), envelope_bytes[12:]
         if receiver != self.me:
             logging.error("MALICIOUS: message received with receiver != me. discarding.")
-            return
-        elif N != self.N:
-            logging.warning("message received which disagrees on the size of the node table (from {}). discarding. check for updates in case the sender is correct".format(sender))
             return
         elif abs(claimed_time - ctime) > self.ALLOWABLE_DRIFT:
             logging.info("message receive which significantly disagrees on the current time (from {}). discarding.".format(sender)) # TODO: raise to 'warning' from friends
@@ -352,7 +366,7 @@ class Mixnet():
                     raise RuntimeError("send socket connection broken")
                 totalsent += sent
         except ConnectionRefusedError:
-            logging.info("Connection refused: ", ip, self.PORT)
+            logging.info("Connection refused: {}:{}".format(ip, self.PORT))
             return
         finally:
             sock.close()
@@ -371,10 +385,10 @@ class Mixnet():
 
         while True:
             logging.debug("Work loop...")
-            logging.debug("Send queue size: ", self.send_queue.qsize())
-            logging.debug("Received queue size: ", self.received_queue.qsize())
-            logging.debug("Scheduled set size: ", sum(len(a) for a in self.scheduled_envelopes.values()))
-            logging.debug("Message queue size: ", sum(a.qsize() for a in self.message_queue.values()))
+            logging.debug("Send queue size: {}".format(self.send_queue.qsize()))
+            logging.debug("Received queue size: {}".format(self.received_queue.qsize()))
+            logging.debug("Scheduled set size: {}".format(sum(len(a) for a in self.scheduled_envelopes.values())))
+            logging.debug("Message queue size: {}".format(sum(a.qsize() for a in self.message_queue.values())))
             now = time.time()
 
             # Check for scheduled sends
@@ -398,7 +412,7 @@ class Mixnet():
             # Do work for upcoming period, plus any delinquent. This is done in advance to avoid timing attacks based on the processing time.
             logging.debug(" Doing work...")
             for ctime in range(last_scheduled_send+1, int(now)+1):
-                logging.debug(" Doing work for ", ctime)
+                logging.debug(" Doing work for {}".format(ctime))
                 self.do_work(ctime)
                 last_scheduled_send = ctime
 
@@ -406,6 +420,7 @@ class Mixnet():
             if last_file_check + self.FILE_CHECK_PERIOD <= now:
                 logging.info(" Checking for new outgoing files...")
                 last_file_check = now
+                self.load_nodes() # Reload nodes.txt periodically
                 self.load_outgoing_messages()
 
             # Check back in at the start of next period
