@@ -31,5 +31,4 @@ The file is short and looks like this:
 ```
 xor --same-size YOUR_ID.half-pad THEIR_ID.half-pad >THEIR_ID.pad && shred -zu YOUR_ID.half-pad THEIR_ID.half-pad
 ```
-5. Put the `.pad` and `.txt` files in the 'pads' directory of ok-mixnet.
-6. Restart `mixer.py`.
+5. Put the `.pad` and `.txt` files in the 'pads' directory of ok-mixnet. The directory `messages-to-send/<friend_name>` will be automatically created in about 10 seconds.
