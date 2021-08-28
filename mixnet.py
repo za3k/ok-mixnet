@@ -56,11 +56,11 @@ class Mixnet():
         Returns a 29066-bit cryptographic random one-time-pad (actually 3635-byte, slightly more) for immediate use.
         No pad is available, and None is returned instead if:
         - There is no pad for the given node id (they are a stranger)
-        - The pad or state-date file is invalid
-        - The state-date is in the future, or the pad has run out of bits.
+        - The pad or start-date file is invalid
+        - The start-date is in the future, or the pad has run out of bits.
         - The pad has already been used for transmission.
 
-        If the pad is fetched as a sender (for transmission), the original in the file will be zeroed to prevent re-use.
+        If the pad is fetched as a sender (for transmission), the original in the file will be zeroed to prevent accidental re-use. The pad is not zeroed as a receiver to prevent malicious zero-ing.
         """
         if not self.pad_present(node):
             return None
@@ -175,7 +175,7 @@ class Mixnet():
 
     def decrypt(self, pad_bytes, encrypted_bytes, check=True):
         """
-        Returns either plaintext, or None indiciating the mac failed.
+        Returns either plaintext, or raises InvalidMac indiciating the mac failed.
         """
         assert len(pad_bytes) == PAD_LENGTH
         assert len(encrypted_bytes) == ENCRYPTED_METHOD_LENGTH
@@ -314,6 +314,7 @@ class Mixnet():
     def process_message_bytes(self, ctime, message_bytes, sender):
         logging.debug(" receieved authenticated message (from {})...".format(sender))
         if message_bytes[0:1] == b"C":
+            # TODO: Enforce all-zero chaff
             logging.debug(" discarding friend chaff (from {})".format(sender))
         # TODO: check for duplicate message ids and report an error instead of overwriting
         elif message_bytes[0:1] == b"M":
